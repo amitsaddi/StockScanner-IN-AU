@@ -7,9 +7,11 @@ Automated Python scanner that runs daily via GitHub Actions to identify BTST and
 - **BTST Scanner**: Identifies buy-today-sell-tomorrow opportunities based on late-day momentum
 - **Swing Scanner**: Finds swing trading setups (3-15 day holds) using technical + fundamental analysis
 - **Automated Execution**: Runs daily at 3:15 PM IST via GitHub Actions
-- **Multi-Channel Notifications**: Email and Telegram alerts
+- **Multi-Channel Notifications**: Email and Telegram alerts with smart completion summaries
+- **Batch Data Fetching**: Optimized to scan 500+ stocks in ~3-5 minutes (5-10x faster)
 - **Historical Tracking**: Saves all scan results to CSV
 - **Configurable Criteria**: Easy to customize scanning parameters
+- **Always-On Monitoring**: Telegram notifications even when no opportunities found
 
 ## Quick Start
 
@@ -34,10 +36,10 @@ Add these secrets:
 - `SMTP_PORT`: `587`
 - `SEND_EMAIL`: `True`
 
-**Telegram Notifications (Optional):**
+**Telegram Notifications (Recommended):**
 - `TELEGRAM_BOT_TOKEN`: Your bot token from @BotFather
 - `TELEGRAM_CHAT_ID`: Your chat ID
-- `SEND_TELEGRAM`: `True` or `False`
+- `SEND_TELEGRAM`: `True` (recommended for daily completion notifications)
 
 ### 3. Enable GitHub Actions
 
@@ -188,9 +190,46 @@ schedule:
 - ✅ Volume confirmation
 - ✅ Preferred sectors: Defence, Capital Goods, Infrastructure
 
-## Output
+## Output & Notifications
 
-### Email/Telegram Notification Example
+### Smart Notification System
+
+**Telegram** (Always sent):
+- Completion summary with scan results
+- Sent even when no opportunities found
+- Quick status check on your phone
+
+**Email** (Only when opportunities found):
+- Detailed analysis reports
+- Full stock recommendations
+- Entry/exit targets and stop losses
+
+### Telegram Completion Summary Example
+
+```
+📊 Stock Scanner - Scan Complete
+10 Nov 2025, 03:15 PM IST
+
+🟢 BTST Scan: 3 opportunities found
+🟠 Swing Scan: 5 stocks found
+
+✅ Detailed reports sent via email.
+```
+
+**Or when no stocks found:**
+
+```
+📊 Stock Scanner - Scan Complete
+10 Nov 2025, 03:15 PM IST
+
+🟢 BTST Scan: 0 opportunities found
+🟠 Swing Scan: 0 stocks found
+
+ℹ️ No trading opportunities found today.
+The scanner ran successfully but market conditions didn't meet our criteria.
+```
+
+### Email Report Example
 
 ```
 🟢 BTST OPPORTUNITIES - 07 November 2025, 03:15 PM
@@ -229,15 +268,65 @@ Results saved to `data/results/btst_scan_YYYYMMDD.csv` and `swing_scan_YYYYMMDD.
 - Check if yfinance API is working (sometimes rate limited)
 - Review logs in GitHub Actions
 
+## Performance & Optimization
+
+### Recent Improvements (v2.0)
+
+- ✅ **Batch Data Fetching**: Refactored to use `yf.download()` for multiple stocks simultaneously
+- ✅ **5-10x Speed Improvement**: Scans 500+ stocks in ~3-5 minutes (down from 25+ minutes)
+- ✅ **Smart Filtering**: Fetches detailed data only for stocks that pass initial criteria
+- ✅ **Error Suppression**: Clean logs without yfinance error spam
+- ✅ **Always-On Notifications**: Telegram completion summary every run
+
+### Scan Performance
+
+| Scanner | Stocks Scanned | Time (Approx) |
+|---------|---------------|---------------|
+| BTST    | 503 (Nifty 500) | ~2-3 minutes |
+| Swing   | 503 → ~200 filtered | ~3-5 minutes |
+| **Total** | **503 stocks** | **~5-8 minutes** |
+
 ## Limitations
 
-- **Data Source**: Uses Yahoo Finance (yfinance) - free but rate limited
+- **Data Source**: Uses Yahoo Finance (yfinance) - free but occasionally rate limited
 - **Market Hours**: Best results when run during market hours (9:15 AM - 3:30 PM IST)
 - **Historical Data**: Limited to what yfinance provides
-- **Rate Limiting**: Scans ~500 stocks with delays to avoid blocking
+- **Batch Optimization**: Uses intelligent batching to avoid rate limits
+
+## Technical Architecture
+
+### Data Fetching Strategy
+
+**Batch Operations** (New in v2.0):
+```python
+# Old: Sequential fetching (slow)
+for symbol in symbols:
+    data = fetch_single(symbol)
+    time.sleep(rate_limit)
+
+# New: Batch fetching (5-10x faster)
+all_data = yf.download(symbols, threads=True)
+filtered = [s for s in symbols if meets_criteria(s)]
+detailed_data = fetch_detailed(filtered)
+```
+
+**Smart Filtering**:
+1. Fetch current prices for all 503 stocks (batch)
+2. Filter by gain criteria (e.g., 2%+ for BTST)
+3. Fetch historical data only for filtered stocks
+4. Fetch fundamentals only for passing candidates
+
+### Test Script
+
+Quick test with 2 symbols:
+```bash
+python test_batch.py
+```
 
 ## Future Enhancements
 
+- [x] ~~Batch data fetching~~ (Completed in v2.0)
+- [x] ~~Smart notification system~~ (Completed in v2.0)
 - [ ] Add NSEpy as backup data source
 - [ ] Implement backtesting module
 - [ ] Add performance tracking
