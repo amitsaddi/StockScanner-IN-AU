@@ -85,7 +85,7 @@ class Config:
     MARKET_CLOSE = "15:30"
     
     # Rate limiting
-    RATE_LIMIT_DELAY = 0.5  # seconds between API calls
+    RATE_LIMIT_DELAY = float(os.getenv("RATE_LIMIT_DELAY", "2.0"))  # seconds between API calls (increased for GitHub Actions)
     BATCH_SIZE = 50  # stocks per batch
     
     @classmethod
