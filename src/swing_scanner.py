@@ -186,58 +186,71 @@ class SwingScanner:
     
     def scan_for_swing(self, symbols: List[str] = None, max_results: int = None) -> List[SwingCandidate]:
         """
-        Scan stocks for swing trading opportunities
-        
+        Scan stocks for swing trading opportunities using efficient batch data fetching
+
         Args:
             symbols: List of symbols to scan
             max_results: Maximum results to return
-        
+
         Returns:
             List of SwingCandidate objects sorted by score
         """
         if symbols is None:
             symbols = self.fetcher.get_nifty500_symbols()
-        
+
         if max_results is None:
             max_results = self.criteria.max_results
-        
+
         logger.info(f"Scanning {len(symbols)} stocks for swing opportunities...")
-        
+
+        # Step 1: Batch fetch fundamentals for all symbols
+        logger.info("Step 1/3: Fetching fundamentals...")
+        fundamentals_dict = self.fetcher.batch_fetch_fundamentals(symbols, batch_size=50)
+
+        # Step 2: Filter symbols based on fundamental criteria
+        logger.info("Step 2/3: Filtering by fundamental criteria...")
+        filtered_symbols = []
+        for symbol, fundamentals in fundamentals_dict.items():
+            if fundamentals.get('market_cap', 0) >= self.criteria.min_market_cap:
+                if fundamentals.get('debt_to_equity', 999) <= self.criteria.max_debt_to_equity:
+                    filtered_symbols.append(symbol)
+
+        logger.info(f"Found {len(filtered_symbols)} stocks passing fundamental filters")
+
+        if not filtered_symbols:
+            logger.info("No stocks meet fundamental criteria")
+            return []
+
+        # Step 3: Batch fetch historical data for filtered symbols
+        logger.info("Step 3/3: Fetching historical data for filtered stocks...")
+        historical_data_dict = self.fetcher.batch_fetch_daily_data(filtered_symbols, days=100)
+
+        # Step 4: Analyze each filtered stock
+        logger.info("Analyzing candidates...")
         candidates = []
-        
-        for i, symbol in enumerate(symbols):
+
+        for symbol in filtered_symbols:
             try:
-                logger.info(f"Analyzing {symbol} ({i+1}/{len(symbols)})")
-                
-                # Fetch fundamentals first (quick filter)
-                fundamentals = self.fetcher.fetch_fundamentals(symbol)
-                if fundamentals is None:
+                fundamentals = fundamentals_dict.get(symbol)
+                historical_df = historical_data_dict.get(symbol)
+
+                if historical_df is None or fundamentals is None:
                     continue
-                
-                # Quick filter on fundamentals
-                if fundamentals.get('market_cap', 0) < self.criteria.min_market_cap:
-                    continue
-                if fundamentals.get('debt_to_equity', 999) > self.criteria.max_debt_to_equity:
-                    continue
-                
-                # Fetch historical data with indicators
-                historical_df = self.fetcher.fetch_daily_data(symbol, days=100)
-                if historical_df is None:
-                    continue
-                
+
+                # Calculate technical indicators
                 historical_df = self.fetcher.calculate_technical_indicators(historical_df)
-                
+
                 # Check criteria
                 passes, score, entry_type, reason = self.check_swing_criteria(
                     historical_df, fundamentals
                 )
-                
+
                 if passes:
                     latest = historical_df.iloc[-1]
                     current_price = latest['Close']
-                    
+
                     target, stop_loss = self.calculate_targets(current_price, entry_type)
-                    
+
                     candidate = SwingCandidate(
                         symbol=symbol.replace('.NS', ''),
                         current_price=round(current_price, 2),
@@ -257,14 +270,14 @@ class SwingScanner:
                     )
                     candidates.append(candidate)
                     logger.info(f"✓ Swing candidate: {candidate.symbol} (score: {score:.0f})")
-            
+
             except Exception as e:
                 logger.error(f"Error analyzing {symbol}: {e}")
                 continue
-        
+
         # Sort by score descending
         candidates.sort(key=lambda x: x.score, reverse=True)
-        
+
         return candidates[:max_results]
     
     def generate_report(self, candidates: List[SwingCandidate]) -> str:

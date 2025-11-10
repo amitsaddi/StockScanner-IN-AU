@@ -113,79 +113,93 @@ class BTSTScanner:
     
     def scan_for_btst(self, symbols: List[str] = None, max_results: int = None) -> List[BTSTCandidate]:
         """
-        Scan stocks for BTST opportunities
-        
+        Scan stocks for BTST opportunities using efficient batch data fetching
+
         Args:
             symbols: List of symbols to scan (if None, scans Nifty 500)
             max_results: Maximum number of results to return
-        
+
         Returns:
             List of BTSTCandidate objects sorted by score
         """
         if symbols is None:
             symbols = self.fetcher.get_nifty500_symbols()
-        
+
         if max_results is None:
             max_results = self.criteria.max_results
-        
+
         logger.info(f"Scanning {len(symbols)} stocks for BTST opportunities...")
-        
+
+        # Step 1: Batch fetch current data for all symbols
+        logger.info("Step 1/4: Fetching current price data...")
+        current_data_dict = self.fetcher.batch_fetch_current_data(symbols)
+
+        # Step 2: Filter stocks that meet minimum gain criteria
+        logger.info("Step 2/4: Filtering stocks by minimum gain criteria...")
+        filtered_symbols = []
+        for symbol, data in current_data_dict.items():
+            if data['day_change_pct'] >= self.criteria.min_gain_percent:
+                filtered_symbols.append(symbol)
+
+        logger.info(f"Found {len(filtered_symbols)} stocks with {self.criteria.min_gain_percent}%+ gain")
+
+        if not filtered_symbols:
+            logger.info("No stocks meet minimum gain criteria")
+            return []
+
+        # Step 3: Batch fetch historical data only for filtered symbols
+        logger.info("Step 3/4: Fetching historical data for filtered stocks...")
+        historical_data_dict = self.fetcher.batch_fetch_daily_data(filtered_symbols, days=50)
+
+        # Step 4: Fetch fundamentals for filtered symbols
+        logger.info("Step 4/4: Fetching fundamentals for filtered stocks...")
+        fundamentals_dict = self.fetcher.batch_fetch_fundamentals(filtered_symbols, batch_size=50)
+
+        # Step 5: Analyze each filtered stock
+        logger.info("Analyzing candidates...")
         candidates = []
-        
-        for i, symbol in enumerate(symbols):
+
+        for i, symbol in enumerate(filtered_symbols):
             try:
-                logger.info(f"Analyzing {symbol} ({i+1}/{len(symbols)})")
-                
-                # Fetch current data
-                current_data = self.fetcher.get_current_price_and_volume(symbol)
-                if current_data is None:
+                current_data = current_data_dict.get(symbol)
+                historical_df = historical_data_dict.get(symbol)
+                fundamentals = fundamentals_dict.get(symbol, {'sector': 'Unknown'})
+
+                if current_data is None or historical_df is None:
                     continue
-                
-                # Quick filter: Must have 2%+ gain
-                if current_data['day_change_pct'] < self.criteria.min_gain_percent:
-                    continue
-                
-                # Fetch historical data
-                historical_df = self.fetcher.fetch_daily_data(symbol, days=50)
-                if historical_df is None:
-                    continue
-                
+
+                # Calculate technical indicators
                 historical_df = self.fetcher.calculate_technical_indicators(historical_df)
-                
-                # Fetch fundamentals
-                fundamentals = self.fetcher.fetch_fundamentals(symbol)
-                if fundamentals is None:
-                    fundamentals = {'sector': 'Unknown'}
-                
+
                 # Check criteria
                 passes, score, reason = self.check_btst_criteria(
                     current_data, historical_df, fundamentals
                 )
-                
+
                 if passes:
                     # Calculate volume ratio
                     volume_ratio = historical_df.iloc[-1].get('Volume_Ratio', 1.0) if not historical_df.empty else 1.0
-                    
+
                     candidate = BTSTCandidate(
                         symbol=current_data['symbol'],
                         current_price=current_data['current_price'],
                         day_change_pct=current_data['day_change_pct'],
                         volume_ratio=volume_ratio,
                         high_proximity_pct=current_data['high_proximity_pct'],
-                        sector=fundamentals['sector'],
+                        sector=fundamentals.get('sector', 'Unknown'),
                         score=score,
                         reason=reason
                     )
                     candidates.append(candidate)
                     logger.info(f"✓ BTST candidate found: {current_data['symbol']} (score: {score:.0f})")
-            
+
             except Exception as e:
                 logger.error(f"Error analyzing {symbol}: {e}")
                 continue
-        
+
         # Sort by score descending
         candidates.sort(key=lambda x: x.score, reverse=True)
-        
+
         # Return top N
         return candidates[:max_results]
     

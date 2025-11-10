@@ -225,32 +225,206 @@ class DataFetcher:
             logger.error(f"Error fetching fundamentals for {symbol}: {e}")
             return None
     
+    def batch_fetch_daily_data(self, symbols: List[str], days: int = 100) -> Dict[str, pd.DataFrame]:
+        """
+        Fetch daily historical data for multiple stocks at once using yf.download()
+        This is much faster than fetching one by one
+
+        Args:
+            symbols: List of stock symbols
+            days: Number of days of history
+
+        Returns:
+            Dict mapping symbol to DataFrame with OHLCV data
+        """
+        try:
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days)
+
+            logger.info(f"Batch fetching daily data for {len(symbols)} stocks...")
+
+            # Use yf.download for batch fetch - much faster!
+            df = yf.download(
+                symbols,
+                start=start_date,
+                end=end_date,
+                interval="1d",
+                group_by='ticker',
+                threads=True,
+                progress=False
+            )
+
+            results = {}
+
+            # Process results for each symbol
+            for symbol in symbols:
+                try:
+                    if len(symbols) == 1:
+                        # Single symbol returns different structure
+                        symbol_df = df.copy()
+                    else:
+                        # Multiple symbols - extract this symbol's data
+                        symbol_df = df[symbol].copy()
+
+                    if not symbol_df.empty:
+                        symbol_df['Symbol'] = symbol.replace('.NS', '')
+                        results[symbol] = symbol_df
+
+                except (KeyError, AttributeError):
+                    logger.warning(f"No data for {symbol}")
+                    continue
+
+            logger.info(f"Successfully fetched data for {len(results)}/{len(symbols)} stocks")
+            return results
+
+        except Exception as e:
+            logger.error(f"Error in batch fetch: {e}")
+            return {}
+
+    def batch_fetch_current_data(self, symbols: List[str]) -> Dict[str, Dict]:
+        """
+        Fetch current price and volume data for multiple stocks
+        Uses batch download for efficiency
+
+        Returns:
+            Dict mapping symbol to current data dict
+        """
+        try:
+            logger.info(f"Batch fetching current data for {len(symbols)} stocks...")
+
+            # Download 2 days of data to get current and previous close
+            df = yf.download(
+                symbols,
+                period="2d",
+                interval="1d",
+                group_by='ticker',
+                threads=True,
+                progress=False
+            )
+
+            results = {}
+
+            for symbol in symbols:
+                try:
+                    if len(symbols) == 1:
+                        symbol_df = df.copy()
+                    else:
+                        symbol_df = df[symbol].copy()
+
+                    if symbol_df.empty or len(symbol_df) < 1:
+                        continue
+
+                    # Get latest data
+                    latest = symbol_df.iloc[-1]
+                    prev_close = symbol_df.iloc[-2]['Close'] if len(symbol_df) >= 2 else latest['Open']
+
+                    current_price = latest['Close']
+                    day_change_pct = ((current_price - prev_close) / prev_close) * 100
+
+                    # Calculate high proximity
+                    high_proximity = ((current_price - latest['Low']) / (latest['High'] - latest['Low'])) * 100 if latest['High'] != latest['Low'] else 0
+
+                    results[symbol] = {
+                        'symbol': symbol.replace('.NS', ''),
+                        'current_price': round(float(current_price), 2),
+                        'open': round(float(latest['Open']), 2),
+                        'high': round(float(latest['High']), 2),
+                        'low': round(float(latest['Low']), 2),
+                        'prev_close': round(float(prev_close), 2),
+                        'volume': int(latest['Volume']),
+                        'day_change_pct': round(float(day_change_pct), 2),
+                        'high_proximity_pct': round(float(high_proximity), 2)
+                    }
+
+                except (KeyError, AttributeError, IndexError) as e:
+                    logger.warning(f"Error processing {symbol}: {e}")
+                    continue
+
+            logger.info(f"Successfully fetched current data for {len(results)}/{len(symbols)} stocks")
+            return results
+
+        except Exception as e:
+            logger.error(f"Error in batch current data fetch: {e}")
+            return {}
+
+    def batch_fetch_fundamentals(self, symbols: List[str], batch_size: int = 50) -> Dict[str, Dict]:
+        """
+        Fetch fundamental data for multiple stocks
+        Note: This still needs to be done one by one, but with batching and rate limiting
+
+        Args:
+            symbols: List of stock symbols
+            batch_size: Number of symbols to process in each batch
+
+        Returns:
+            Dict mapping symbol to fundamentals dict
+        """
+        results = {}
+        total = len(symbols)
+
+        logger.info(f"Fetching fundamentals for {total} stocks in batches of {batch_size}...")
+
+        for i in range(0, total, batch_size):
+            batch = symbols[i:i + batch_size]
+            logger.info(f"Processing batch {i//batch_size + 1}/{(total-1)//batch_size + 1}")
+
+            for symbol in batch:
+                try:
+                    ticker = yf.Ticker(symbol)
+                    info = ticker.info
+
+                    results[symbol] = {
+                        'symbol': symbol.replace('.NS', ''),
+                        'market_cap': info.get('marketCap', 0) / 10000000,
+                        'pe_ratio': info.get('trailingPE', 0),
+                        'debt_to_equity': info.get('debtToEquity', 0) / 100,
+                        'roe': info.get('returnOnEquity', 0) * 100 if info.get('returnOnEquity') else 0,
+                        'sector': info.get('sector', 'Unknown'),
+                        'industry': info.get('industry', 'Unknown'),
+                    }
+
+                    # Small delay between API calls
+                    time.sleep(0.1)
+
+                except Exception as e:
+                    logger.warning(f"Error fetching fundamentals for {symbol}: {e}")
+                    results[symbol] = {'sector': 'Unknown', 'market_cap': 0, 'pe_ratio': 0, 'debt_to_equity': 0, 'roe': 0, 'industry': 'Unknown'}
+                    continue
+
+            # Delay between batches
+            if i + batch_size < total:
+                time.sleep(1.0)
+
+        logger.info(f"Fetched fundamentals for {len(results)}/{total} stocks")
+        return results
+
     def batch_fetch_with_rate_limit(self, symbols: List[str], fetch_func, **kwargs):
         """
         Fetch data for multiple symbols with rate limiting
-        
+        DEPRECATED: Use batch_fetch_daily_data or batch_fetch_current_data instead
+
         Args:
             symbols: List of stock symbols
             fetch_func: Function to call for each symbol
             **kwargs: Additional arguments to pass to fetch_func
-        
+
         Returns:
             Dict mapping symbol to result
         """
         results = {}
         total = len(symbols)
-        
+
         for i, symbol in enumerate(symbols):
             logger.info(f"Fetching {symbol} ({i+1}/{total})")
-            
+
             result = fetch_func(symbol, **kwargs)
             if result is not None:
                 results[symbol] = result
-            
+
             # Rate limiting
             if i < total - 1:  # Don't sleep after last item
                 time.sleep(self.config.RATE_LIMIT_DELAY)
-        
+
         return results
 
 
