@@ -1,9 +1,11 @@
-name: Daily Stock Scan
+name: Daily Stock Scan - Australia
 
 on:
   schedule:
-    # Run at 3:15 PM IST (9:45 AM UTC)
-    - cron: '45 9 * * 1-5'  # Mon-Fri
+    # Run at 4:15 PM AEST (6:45 AM UTC)
+    # Note: AEST is UTC+10, so 4:15 PM AEST = 6:15 AM UTC
+    # Adding 30 minutes buffer = 6:45 AM UTC
+    - cron: '45 6 * * 1-5'  # Mon-Fri
   workflow_dispatch:  # Allow manual triggers
 
 jobs:
@@ -26,7 +28,7 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           pip install -r requirements.txt
 
-      - name: Run stock scanner
+      - name: Run Australian stock scanner
         env:
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
@@ -35,4 +37,4 @@ jobs:
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python src/main.py
+        run: python src/main_australia.py --type swing

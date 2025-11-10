@@ -2,7 +2,148 @@
 
 Automated Python scanner that runs daily via GitHub Actions to identify BTST and swing trading opportunities in Indian stock market (Nifty 500).
 
-## Features
+## Quick Links
+- **Indian Market**: See main documentation below
+- **Australian Market**: See [README-AUSTRALIA.md](README-AUSTRALIA.md) for ASX-specific documentation
+
+## Stock Selection Workflow
+
+### BTST Scanner Workflow
+```
+┌─────────────────────────────────────────────────────────────┐
+│  START: Nifty 500 Stocks (503 stocks)                       │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 1: Batch Fetch Current Data (yfinance)                │
+│  • Current price, volume, day's OHLC                         │
+│  • Previous close                                            │
+│  • Takes ~30 seconds for all 503 stocks                      │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 2: Quick Filter - Price Action                        │
+│  ✓ Day gain: 2.0% - 3.5%                                    │
+│  ✓ Near day high: >90%                                       │
+│  ✓ Exclude: IT, Pharma sectors                              │
+│  → Typically 10-30 stocks pass                               │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 3: Fetch Historical Data (Filtered Stocks Only)       │
+│  • Last 100 days OHLCV data                                  │
+│  • Calculate: EMA(20), Volume avg(20)                        │
+│  • Takes ~1-2 minutes for filtered stocks                    │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 4: Technical Filter                                   │
+│  ✓ Volume: >1.5x average                                    │
+│  ✓ Price: Above EMA(20)                                     │
+│  ✓ Momentum: Sustained intraday strength                    │
+│  → Typically 3-10 stocks pass                                │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 5: Score & Rank                                       │
+│  • Price momentum score (40%)                                │
+│  • Volume score (30%)                                        │
+│  • High proximity score (30%)                                │
+│  • Sort by total score                                       │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  OUTPUT: Top BTST Candidates (0-10 typically)               │
+│  • Email report with entry/exit targets                      │
+│  • Telegram completion summary (always)                      │
+│  • CSV save: data/results/india/btst_scan_YYYYMMDD.csv      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Swing Scanner Workflow
+```
+┌─────────────────────────────────────────────────────────────┐
+│  START: Nifty 500 Stocks (503 stocks)                       │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 1: Batch Fetch Daily Data (100 days)                  │
+│  • OHLCV data for all 503 stocks                             │
+│  • Takes ~1-2 minutes with batch fetching                    │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 2: Calculate Technical Indicators (All Stocks)        │
+│  • EMA(20), EMA(50), SMA(200)                               │
+│  • RSI(14), MACD(12,26,9)                                   │
+│  • Volume ratio vs 20-day average                           │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 3: Technical Filter                                   │
+│  ✓ RSI: 40-60 (neutral zone)                                │
+│  ✓ Price: Above EMA(20), EMA(50), SMA(200)                  │
+│  ✓ MACD: Bullish or neutral                                 │
+│  ✓ Volume: >1.3x average                                    │
+│  → Typically 150-250 stocks pass                             │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 4: Fetch Fundamentals (Filtered Stocks Only)          │
+│  • Market cap, Debt/Equity, ROE, PE ratio                    │
+│  • Sector classification                                     │
+│  • Takes ~2-3 minutes with batching & rate limiting          │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 5: Fundamental Filter                                 │
+│  ✓ Market Cap: >₹5,000 Cr                                   │
+│  ✓ Debt/Equity: <0.5                                        │
+│  ✓ ROE: >15%                                                │
+│  ✓ Sector: Prefer Defence, Capital Goods, Infrastructure    │
+│  → Typically 5-15 stocks pass                                │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 6: Entry Signal Detection                             │
+│  • Pullback (RSI 40-45, near support)                        │
+│  • Breakout (price > EMA with volume)                        │
+│  • MACD Cross (bullish crossover)                            │
+│  • MA Cross (EMA 20 > EMA 50)                                │
+│  • Trend Follow (above all MAs)                              │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 7: Score & Rank                                       │
+│  • Technical score (40%): RSI, MACD, MA alignment            │
+│  • Fundamental score (30%): ROE, D/E, Market Cap             │
+│  • Volume score (20%): Volume ratio                          │
+│  • Sector bonus (10%): Preferred sectors get +15 points     │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  OUTPUT: Top Swing Candidates (0-15 typically)              │
+│  • Email report with detailed analysis                       │
+│  • Telegram completion summary (always)                      │
+│  • CSV save: data/results/india/swing_scan_YYYYMMDD.csv     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Features (India)
 
 - **BTST Scanner**: Identifies buy-today-sell-tomorrow opportunities based on late-day momentum
 - **Swing Scanner**: Finds swing trading setups (3-15 day holds) using technical + fundamental analysis
@@ -79,19 +220,32 @@ Add these secrets:
 stock-scanner/
 ├── .github/
 │   └── workflows/
-│       └── daily_scan.yml          # GitHub Actions workflow
+│       ├── daily_scan_india.yml       # Indian market workflow
+│       └── daily_scan_australia.yml   # Australian market workflow
 ├── src/
-│   ├── main.py                     # Main runner
-│   ├── config.py                   # Configuration
-│   ├── data_fetcher.py             # Data fetching logic
-│   ├── btst_scanner.py             # BTST scanner
-│   ├── swing_scanner.py            # Swing scanner
-│   └── notifier.py                 # Email/Telegram notifications
+│   ├── config/
+│   │   ├── base_config.py            # Shared configuration
+│   │   ├── india_config.py           # India-specific config
+│   │   └── australia_config.py       # Australia-specific config
+│   ├── shared/
+│   │   ├── data_fetcher.py           # Multi-market data fetching
+│   │   └── notifier.py               # Email/Telegram notifications
+│   ├── markets/
+│   │   ├── india/
+│   │   │   ├── btst_scanner.py       # BTST scanner (India only)
+│   │   │   └── swing_scanner.py      # Swing scanner (India)
+│   │   └── australia/
+│   │       └── swing_scanner.py      # Swing scanner (Australia)
+│   ├── main_india.py                 # Indian market runner
+│   ├── main_australia.py             # Australian market runner
+│   └── main.py                       # Backwards compatibility (deprecated)
 ├── data/
-│   ├── results/                    # Scan results (CSV files)
-│   └── nifty500.csv               # Stock universe
-├── requirements.txt                # Python dependencies
-└── README.md
+│   └── results/
+│       ├── india/                    # Indian scan results
+│       └── australia/                # Australian scan results
+├── requirements.txt                  # Python dependencies
+├── README.md                         # Indian market documentation
+└── README-AUSTRALIA.md               # Australian market documentation
 ```
 
 ## Local Development
@@ -127,16 +281,16 @@ SEND_TELEGRAM=False
 
 ```bash
 # Test run (only 10 stocks)
-python src/main.py --test
+python src/main_india.py --test
 
 # Full BTST scan
-python src/main.py --type btst
+python src/main_india.py --type btst
 
 # Full swing scan
-python src/main.py --type swing
+python src/main_india.py --type swing
 
 # Both scans
-python src/main.py --type both
+python src/main_india.py --type both
 ```
 
 ## Customization
