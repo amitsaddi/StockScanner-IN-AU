@@ -27,7 +27,7 @@ venv/
 ENV/
 env/
 .venv
-stockScannerIN/
+stockScannerVENV/
 backtest_v*
 btst_backtest_v*
 swing_backtest_v*

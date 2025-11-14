@@ -86,7 +86,7 @@ if command -v python3 &> /dev/null; then
         echo -e "${RED}✗${NC} db_schema.py (syntax error)"
         ((ERRORS++))
     fi
-    
+
     if python3 -m py_compile scripts/data_fetcher.py 2>/dev/null; then
         echo -e "${GREEN}✓${NC} data_fetcher.py (valid Python)"
     else
@@ -100,7 +100,7 @@ fi
 echo ""
 
 echo -e "${BLUE}Checking virtual environment...${NC}"
-VENV_PATH="../stockScannerIN"
+VENV_PATH="../stockScannerVENV"
 if [ -f "$VENV_PATH/bin/activate" ]; then
     echo -e "${GREEN}✓${NC} Virtual environment found at $VENV_PATH"
 elif [ -f "$VENV_PATH/Scripts/activate" ]; then
@@ -115,7 +115,7 @@ echo ""
 echo -e "${BLUE}Checking Python packages (if available)...${NC}"
 if command -v python3 &> /dev/null; then
     MISSING_PACKAGES=()
-    
+
     for pkg in pandas numpy yfinance scipy matplotlib plotly; do
         if python3 -c "import $pkg" 2>/dev/null; then
             echo -e "${GREEN}✓${NC} $pkg installed"
@@ -125,7 +125,7 @@ if command -v python3 &> /dev/null; then
             ((WARNINGS++))
         fi
     done
-    
+
     if [ ${#MISSING_PACKAGES[@]} -gt 0 ]; then
         echo ""
         echo -e "${YELLOW}To install missing packages:${NC}"

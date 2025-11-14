@@ -7,7 +7,7 @@ echo "Starting ASX200 Backtest Results Dashboard..."
 echo "=============================================="
 
 # Path to virtual environment
-VENV_PATH="../../stockScannerIN"
+VENV_PATH="../../stockScannerVENV"
 
 # Activate virtual environment if it exists
 if [ -f "$VENV_PATH/bin/activate" ]; then

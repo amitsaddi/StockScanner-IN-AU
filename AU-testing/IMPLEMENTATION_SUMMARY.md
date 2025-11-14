@@ -7,6 +7,7 @@
 ## Overview
 
 This document summarizes the enhancements implemented for the Australian stock market backtesting framework, focusing on three major areas:
+
 1. Incremental data updates (reduces data download time by 90%+)
 2. Results tracking database (enables trend analysis over time)
 3. Web dashboard (visual monitoring of strategy performance)
@@ -16,22 +17,27 @@ This document summarizes the enhancements implemented for the Australian stock m
 ## Part 1: Incremental Data Updates
 
 ### Objective
+
 Modify the data fetcher to download ONLY new data since the last recorded date, instead of re-downloading the full 6 months of history every time.
 
 ### Implementation Details
 
 #### 1.1 Modified Files
+
 - **AU-testing/scripts/data_fetcher.py**
 - **AU-testing/scripts/db_schema.py**
 
 #### 1.2 Key Changes
 
 ##### A. Updated `check_if_downloaded()` method (Line 448-492)
+
 **Previous Behavior:**
+
 - If data was 7+ days old, triggered full re-download of all 180 days
 - Wasted bandwidth and time re-downloading existing data
 
 **New Behavior:**
+
 - Skips download ONLY if data is from today (days_old == 0)
 - Otherwise, returns `(True, last_date)` to trigger incremental update
 - Logs: "Incremental update for {symbol} - data is X days old"
@@ -39,15 +45,18 @@ Modify the data fetcher to download ONLY new data since the last recorded date, 
 **Impact:** Reduces unnecessary downloads by 95%+ for daily runs
 
 ##### B. Added `get_incremental_date_range()` method (Line 494-527)
+
 **Purpose:** Calculate optimal date ranges for incremental updates
 
 **Logic:**
+
 - For new stocks: Download full period (180 days + 30 buffer for indicators)
 - For existing stocks: Download from (last_date + 1) to today
 - Calculates pruning cutoff to maintain rolling 180-day window
 - Returns: `(start_date, end_date, prune_before_date)`
 
 **Example:**
+
 ```
 Last data: 2025-11-05
 Today: 2025-11-12
@@ -56,9 +65,11 @@ Prune: Delete data before 2025-05-15 (maintain 180-day window)
 ```
 
 ##### C. Updated `store_stock_data()` method (Line 428-460)
+
 **Problem:** `if_exists='append'` created duplicate dates
 
 **Solution:** Delete overlapping dates before inserting
+
 ```python
 # Delete existing data in date range
 DELETE FROM {table_name}
@@ -71,23 +82,28 @@ df_to_insert.to_sql(..., if_exists='append')
 **Impact:** Prevents duplicate records, ensures data integrity
 
 ##### D. Enhanced `process_bulk_batch()` method (Line 621-680)
+
 **Previous:** Always downloaded full 180+30 days for all stocks
 
 **New:**
+
 - Tracks `last_date` for each stock
 - Calculates earliest start date needed across batch
 - For incremental updates, includes 60-day buffer for indicator recalculation
 - Groups stocks by similar date ranges for efficient bulk downloads
 
 **Performance Gain:**
+
 - Day 1 run: ~8 minutes (full 180 days for 200 stocks)
 - Day 2 run: ~45 seconds (incremental 1 day for 200 stocks)
 - **90% time reduction for daily updates**
 
 ##### E. Added `prune_old_data()` method to db_schema.py (Line 322-341)
+
 **Purpose:** Maintain rolling 180-day window
 
 **Usage:**
+
 ```python
 db.prune_old_data(symbol='BHP', before_date='2025-05-15')
 # Deletes records older than specified date
@@ -99,6 +115,7 @@ db.prune_old_data(symbol='BHP', before_date='2025-05-15')
 ## Part 2: Results Tracking Database
 
 ### Objective
+
 Create database tables to store backtest results history, enabling trend analysis and automated recommendations over time.
 
 ### Implementation Details
@@ -106,9 +123,11 @@ Create database tables to store backtest results history, enabling trend analysi
 #### 2.1 Database Schema (db_schema.py, Line 197-309)
 
 ##### Table 1: `backtest_results_history`
+
 **Purpose:** Store daily backtest metrics for v1 and v2 strategies
 
 **Schema:**
+
 ```sql
 CREATE TABLE backtest_results_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -149,13 +168,16 @@ CREATE TABLE backtest_results_history (
 ```
 
 **Indexes:**
+
 - `idx_results_date` on `run_date`
 - `idx_results_strategy` on `(strategy_type, version)`
 
 ##### Table 2: `comparison_results_history`
+
 **Purpose:** Store daily comparison results and recommendations
 
 **Schema:**
+
 ```sql
 CREATE TABLE comparison_results_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -191,9 +213,11 @@ CREATE TABLE comparison_results_history (
 ```
 
 **Index:**
+
 - `idx_comparison_date` on `run_date`
 
 ##### View: `vw_30day_trend`
+
 **Purpose:** Quick access to last 30 days of comparison results
 
 ```sql
@@ -220,9 +244,11 @@ ORDER BY run_date DESC
 #### 2.2 Data Persistence (compare_strategies.py, Line 1467-1594)
 
 ##### Function: `save_to_history_database()`
+
 **Purpose:** Save backtest results after each comparison run
 
 **Parameters:**
+
 - `db_path`: Database file path
 - `run_date`: Current date (YYYY-MM-DD)
 - `strategy_type`: 'swing' (extensible for other strategies)
@@ -234,6 +260,7 @@ ORDER BY run_date DESC
 - `statistical_tests`: P-values from significance tests
 
 **Process:**
+
 1. Insert v1 results into `backtest_results_history`
 2. Insert v2 results into `backtest_results_history`
 3. Map recommendation format ('v2' → 'use_v2')
@@ -241,6 +268,7 @@ ORDER BY run_date DESC
 5. Insert comparison into `comparison_results_history`
 
 **Example Usage:**
+
 ```python
 save_to_history_database(
     db_path='../data/asx200_historical.db',
@@ -259,12 +287,14 @@ save_to_history_database(
 #### 2.3 Integration with Comparison Module (Line 1693-1745)
 
 **Added to `compare_strategies.py` main() function:**
+
 1. New argument: `--db-path` (default: ../data/asx200_historical.db)
 2. Calculate `criteria_met` based on 5 improvement criteria
 3. Map generated report files to output_files dict
 4. Call `save_to_history_database()` after reports are generated
 
 **Criteria for v2 Recommendation:**
+
 1. Signal volume increased by 30%+
 2. Win rate within 5% of v1
 3. Average return 10%+ higher
@@ -272,6 +302,7 @@ save_to_history_database(
 5. Sharpe ratio better than v1
 
 **Confidence Levels:**
+
 - HIGH: 4-5 criteria met
 - MEDIUM: 3 criteria met
 - LOW: 0-2 criteria met
@@ -281,6 +312,7 @@ save_to_history_database(
 ## Part 3: Web Dashboard
 
 ### Objective
+
 Create a Flask-based web dashboard to visualize backtest results trends and monitor strategy performance over time.
 
 ### Implementation Details
@@ -290,10 +322,12 @@ Create a Flask-based web dashboard to visualize backtest results trends and moni
 ##### Routes:
 
 **1. GET /** - Main Dashboard Page
+
 - Renders `dashboard.html` template
 - Single-page application with AJAX data loading
 
 **2. GET /api/summary** - Dashboard Summary Data
+
 ```json
 {
     "latest_comparison": {
@@ -318,14 +352,17 @@ Create a Flask-based web dashboard to visualize backtest results trends and moni
 ```
 
 **3. GET /api/results/<run_date>** - Detailed Results for Specific Date
+
 - Returns full comparison and backtest results for a given date
 - Used for drill-down analysis
 
 **4. GET /api/dates** - List of All Available Dates
+
 - Returns array of dates with available results
 - Populates date selector dropdown
 
 ##### Launch Script (start_dashboard.sh)
+
 ```bash
 #!/bin/bash
 # Activates virtual environment
@@ -335,6 +372,7 @@ Create a Flask-based web dashboard to visualize backtest results trends and moni
 ```
 
 **Usage:**
+
 ```bash
 cd AU-testing/backtesting
 chmod +x start_dashboard.sh
@@ -344,6 +382,7 @@ chmod +x start_dashboard.sh
 #### 3.2 Dashboard UI (templates/dashboard.html)
 
 ##### Design Features:
+
 - **Gradient Header:** Purple gradient with project branding
 - **Responsive Grid Layout:** Adapts to screen size (mobile-friendly)
 - **Real-time Updates:** Auto-refresh every 5 minutes
@@ -355,23 +394,27 @@ chmod +x start_dashboard.sh
 ##### Dashboard Sections:
 
 **1. Latest Recommendation Card**
+
 - Current strategy recommendation (v1/v2)
 - Confidence level badge (HIGH/MEDIUM/LOW)
 - Criteria met count (X / 5)
 - Run date
 
 **2. 30-Day Trend Card**
+
 - Count of v2 recommendations
 - Count of v1 recommendations
 - Count of inconclusive results
 - Total runs in last 30 days
 
 **3. Latest Performance Card**
+
 - Average return delta (v2 - v1)
 - Win rate delta (v2 - v1)
 - Sharpe ratio delta (v2 - v1)
 
 **4. Historical Comparison Table**
+
 - Date selector dropdown
 - Sortable columns:
   - Run date
@@ -383,21 +426,25 @@ chmod +x start_dashboard.sh
   - Delta total trades
 
 **5. Performance Trends Chart**
+
 - Placeholder for future charting library integration
 - Could display line charts of metrics over time
 
 ##### Visual Elements:
 
 **Badges:**
+
 - **Recommendation:** v2 (blue), v1 (gray)
 - **Confidence:** HIGH (green), MEDIUM (yellow), LOW (red)
 
 **Color Coding:**
+
 - Positive deltas: Green (#28a745)
 - Negative deltas: Red (#dc3545)
 - Neutral: Gray (#6c757d)
 
 **Styling:**
+
 - Modern card-based layout
 - Subtle shadows for depth
 - Rounded corners (10px radius)
@@ -408,7 +455,9 @@ chmod +x start_dashboard.sh
 ## Part 4: Documentation Updates
 
 ### Updated requirements.txt
+
 Added Flask dependency:
+
 ```
 flask>=3.0.0
 ```
@@ -416,6 +465,7 @@ flask>=3.0.0
 ### Created Documentation Files
 
 #### 1. IMPLEMENTATION_SUMMARY.md (this file)
+
 - Complete overview of all enhancements
 - Technical details for each component
 - Usage examples and code snippets
@@ -423,6 +473,7 @@ flask>=3.0.0
 #### 2. Quick Start Guide (in README-AUSTRALIA.md)
 
 **Added sections:**
+
 - Incremental Updates (how daily runs work)
 - Results Tracking (database schema and usage)
 - Web Dashboard (launching and using the UI)
@@ -434,6 +485,7 @@ flask>=3.0.0
 ### Test Scenarios
 
 #### Scenario 1: First Run (No Existing Data)
+
 ```bash
 cd AU-testing/scripts
 python3 data_fetcher.py --test
@@ -446,6 +498,7 @@ Expected:
 ```
 
 #### Scenario 2: Daily Update (Existing Data)
+
 ```bash
 python3 data_fetcher.py --test
 
@@ -458,6 +511,7 @@ Expected:
 ```
 
 #### Scenario 3: Backtest Comparison
+
 ```bash
 cd AU-testing/backtesting
 ./run_full_backtest.sh
@@ -471,6 +525,7 @@ Expected:
 ```
 
 #### Scenario 4: Dashboard Launch
+
 ```bash
 cd AU-testing/backtesting
 ./start_dashboard.sh
@@ -486,6 +541,7 @@ Expected:
 ### Validation Checks
 
 #### Data Integrity
+
 ```sql
 -- Check for duplicate dates (should be 0)
 SELECT symbol, date, COUNT(*)
@@ -500,6 +556,7 @@ FROM stock_BHP;
 ```
 
 #### Results History
+
 ```sql
 -- Check results saved correctly
 SELECT run_date, version, total_trades, avg_return, sharpe_ratio
@@ -517,22 +574,24 @@ SELECT * FROM vw_30day_trend;
 
 ### Benchmarks (200 ASX stocks)
 
-| Metric | Before | After | Improvement |
-|--------|--------|-------|-------------|
-| **First Run** | 8 min | 8 min | Baseline |
-| **Daily Update** | 8 min | 45 sec | **90% faster** |
-| **Data Download** | 36,000 days | 200 days | **99% reduction** |
-| **Disk I/O** | 500 MB | 5 MB | **99% reduction** |
-| **API Calls** | 200 × 180 days | 200 × 1 day | **99% reduction** |
+| Metric            | Before         | After       | Improvement       |
+| ----------------- | -------------- | ----------- | ----------------- |
+| **First Run**     | 8 min          | 8 min       | Baseline          |
+| **Daily Update**  | 8 min          | 45 sec      | **90% faster**    |
+| **Data Download** | 36,000 days    | 200 days    | **99% reduction** |
+| **Disk I/O**      | 500 MB         | 5 MB        | **99% reduction** |
+| **API Calls**     | 200 × 180 days | 200 × 1 day | **99% reduction** |
 
 ### Resource Usage
 
 **Network Bandwidth:**
+
 - Before: ~500 MB per run (full re-download)
 - After: ~5 MB per run (incremental)
 - **Savings:** 495 MB per day = 14.8 GB/month
 
 **Database Size:**
+
 - Maintained at ~180 days per stock
 - Auto-pruning prevents unlimited growth
 - Results history: ~1 MB per month
@@ -542,13 +601,16 @@ SELECT * FROM vw_30day_trend;
 ## File Changes Summary
 
 ### New Files
+
 1. `AU-testing/backtesting/view_results_dashboard.py` (Flask app)
 2. `AU-testing/backtesting/templates/dashboard.html` (UI)
 3. `AU-testing/backtesting/start_dashboard.sh` (launcher)
 4. `AU-testing/IMPLEMENTATION_SUMMARY.md` (this file)
 
 ### Modified Files
+
 1. `AU-testing/scripts/data_fetcher.py`
+
    - Line 448-492: Updated `check_if_downloaded()`
    - Line 494-527: Added `get_incremental_date_range()`
    - Line 428-460: Updated `store_stock_data()` with duplicate prevention
@@ -556,10 +618,12 @@ SELECT * FROM vw_30day_trend;
    - Line 922: Added call to `create_results_tracking_tables()`
 
 2. `AU-testing/scripts/db_schema.py`
+
    - Line 197-309: Added `create_results_tracking_tables()`
    - Line 322-341: Added `prune_old_data()`
 
 3. `AU-testing/backtesting/compare_strategies.py`
+
    - Line 1467-1594: Added `save_to_history_database()`
    - Line 1669-1674: Added `--db-path` argument
    - Line 1700-1745: Integrated database saving into main()
@@ -574,6 +638,7 @@ SELECT * FROM vw_30day_trend;
 ### Daily Workflow
 
 **1. Morning Data Update (9:00 AM):**
+
 ```bash
 cd AU-testing/scripts
 python3 data_fetcher.py
@@ -584,6 +649,7 @@ python3 data_fetcher.py
 ```
 
 **2. Run Backtests (9:05 AM):**
+
 ```bash
 cd AU-testing/backtesting
 ./run_full_backtest.sh
@@ -595,6 +661,7 @@ cd AU-testing/backtesting
 ```
 
 **3. Review Dashboard (9:30 AM):**
+
 ```bash
 cd AU-testing/backtesting
 ./start_dashboard.sh
@@ -606,6 +673,7 @@ cd AU-testing/backtesting
 ```
 
 **4. Review Reports:**
+
 - HTML Report: `AU-testing/backtesting/comparison_reports/comparison_report_YYYYMMDD_HHMMSS.html`
 - Text Summary: `AU-testing/backtesting/comparison_reports/comparison_summary_YYYYMMDD_HHMMSS.txt`
 - CSV Data: `AU-testing/backtesting/comparison_reports/comparison_metrics_YYYYMMDD_HHMMSS.csv`
@@ -613,6 +681,7 @@ cd AU-testing/backtesting
 ### Weekly Analysis
 
 **Query Trend Data:**
+
 ```sql
 -- Connect to database
 sqlite3 AU-testing/data/asx200_historical.db
@@ -633,28 +702,34 @@ WHERE run_date >= date('now', '-30 days');
 ## Known Limitations & Future Enhancements
 
 ### Current Limitations
+
 1. **Dashboard Charts:** Placeholder only (no actual charting library integrated)
 2. **Manual Deployment:** No automated deployment for dashboard
 3. **Single Strategy:** Only swing strategy supported (easily extensible)
 4. **No Authentication:** Dashboard has no login/security
 
 ### Future Enhancements
+
 1. **Add Charting Library:**
+
    - Integrate Chart.js or Plotly
    - Display interactive performance trends
    - Sector-wise comparison charts
 
 2. **Advanced Analytics:**
+
    - Monte Carlo simulation results
    - Drawdown distribution analysis
    - Trade duration histograms
 
 3. **Alerting:**
+
    - Email alerts when v2 outperforms significantly
    - Telegram notifications for recommendation changes
    - Threshold-based warnings
 
 4. **Multi-Strategy Support:**
+
    - Extend to intraday and position trading
    - Compare across strategy types
    - Portfolio optimization
@@ -669,9 +744,11 @@ WHERE run_date >= date('now', '-30 days');
 ## Troubleshooting
 
 ### Issue 1: Database Locked Error
+
 **Symptom:** `sqlite3.OperationalError: database is locked`
 
 **Solution:**
+
 ```bash
 # Check for active connections
 lsof AU-testing/data/asx200_historical.db
@@ -683,9 +760,11 @@ kill -9 <PID>
 ```
 
 ### Issue 2: Dashboard Shows "No Results"
+
 **Symptom:** Dashboard displays "No results available yet"
 
 **Solution:**
+
 ```bash
 # Run at least one backtest
 cd AU-testing/backtesting
@@ -697,9 +776,11 @@ SELECT COUNT(*) FROM comparison_results_history;
 ```
 
 ### Issue 3: Incremental Update Not Working
+
 **Symptom:** Still downloading full 180 days every time
 
 **Solution:**
+
 ```bash
 # Check metadata table
 sqlite3 AU-testing/data/asx200_historical.db
@@ -710,12 +791,14 @@ python3 data_fetcher.py --test
 ```
 
 ### Issue 4: Flask Import Error
+
 **Symptom:** `ModuleNotFoundError: No module named 'flask'`
 
 **Solution:**
+
 ```bash
 # Activate virtual environment
-source ../../stockScannerIN/bin/activate
+source ../../stockScannerVENV/bin/activate
 
 # Install Flask
 pip install flask>=3.0.0

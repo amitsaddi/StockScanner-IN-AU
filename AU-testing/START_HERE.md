@@ -18,6 +18,7 @@ cd AU-testing/backtesting
 ```
 
 **What happens:**
+
 1. Downloads 10 test stocks (~10 seconds with parallel download)
 2. Runs v1 backtest (~30 seconds)
 3. Runs v2 backtest (~30 seconds)
@@ -33,10 +34,12 @@ cd AU-testing/backtesting
 The HTML report shows:
 
 ### Executive Summary
+
 - **Recommendation**: Use v1 or v2? (with confidence level)
 - **Key Metrics**: Side-by-side comparison
 
 ### Detailed Analysis
+
 - Total trades (v2 should have 30-50% more)
 - Win rate (should be within 5%)
 - Average return (v2 target: 10-20% higher)
@@ -47,6 +50,7 @@ The HTML report shows:
 ### Decision
 
 If v2 meets 4-5 success criteria:
+
 - ✅ 30%+ more signals
 - ✅ Win rate within 5% of v1
 - ✅ Average return 10%+ higher
@@ -67,6 +71,7 @@ cd AU-testing/backtesting
 ```
 
 **Time**: ~10 minutes total
+
 - Data download: 5-7 minutes (parallel, optimized)
 - v1 backtest: 1-2 minutes
 - v2 backtest: 1-2 minutes
@@ -96,6 +101,7 @@ AU-testing/backtesting/
 ## What's Different: v1 vs v2
 
 ### v1 (Current)
+
 - RSI: 35-65
 - 52W High: 85-98%
 - D/E ≤ 1.0, ROE ≥ 10%
@@ -104,6 +110,7 @@ AU-testing/backtesting/
 - Materials/Energy priority
 
 ### v2 (Enhanced)
+
 - RSI: 30-70 (wider)
 - 52W High: 80-100% (no cap)
 - D/E ≤ 1.2, ROE ≥ 8% (relaxed)
@@ -117,6 +124,7 @@ AU-testing/backtesting/
 ## Troubleshooting
 
 ### "No such file or directory"
+
 ```bash
 # Make sure you're in the right directory
 cd /Users/amitsaddi/Documents/git/IN-Stock-scanner/AU-testing/backtesting
@@ -124,20 +132,23 @@ cd /Users/amitsaddi/Documents/git/IN-Stock-scanner/AU-testing/backtesting
 ```
 
 ### "Permission denied"
+
 ```bash
 chmod +x run_full_backtest.sh
 ./run_full_backtest.sh --test
 ```
 
 ### "No module named pandas"
+
 ```bash
 # Install dependencies (one-time)
 cd /Users/amitsaddi/Documents/git/IN-Stock-scanner
-source stockScannerIN/bin/activate
+source stockScannerVENV/bin/activate
 pip install -r AU-testing/requirements.txt
 ```
 
 ### Script runs but shows errors
+
 ```bash
 # Check logs
 ls -lt AU-testing/logs/
@@ -157,16 +168,19 @@ The HTML report has everything you need to make a data-driven decision.
 ## Advanced Options (Optional)
 
 ### Custom Date Range
+
 ```bash
 ./run_full_backtest.sh --start-date 2025-07-01 --end-date 2025-10-31
 ```
 
 ### Skip Download (if data already exists)
+
 ```bash
 ./run_full_backtest.sh --test --skip-download
 ```
 
 ### Full Command Options
+
 ```bash
 ./run_full_backtest.sh [--test] [--skip-download] [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD]
 ```
@@ -188,6 +202,7 @@ The data fetcher now downloads only NEW data since the last recorded date, makin
 ### How It Works
 
 **First Run (Full Download)**:
+
 ```bash
 cd AU-testing/scripts
 python3 data_fetcher.py --test --workers 5
@@ -195,6 +210,7 @@ python3 data_fetcher.py --test --workers 5
 ```
 
 **Subsequent Runs (Incremental)**:
+
 ```bash
 # Next day
 python3 data_fetcher.py --test --workers 5
@@ -224,6 +240,7 @@ Every backtest run now automatically saves results to a history database for tre
 ### What Gets Tracked
 
 **For Each Run**:
+
 - Date of run (one record per day - latest run overwrites)
 - Strategy type (swing)
 - Version (v1 or v2)
@@ -236,11 +253,13 @@ Every backtest run now automatically saves results to a history database for tre
 ### Database Location
 
 Results are stored in the same database as stock data:
+
 ```
 AU-testing/data/asx200_historical.db
 ```
 
 **Tables**:
+
 - `backtest_results_history` - Individual v1/v2 run metrics
 - `comparison_results_history` - Strategy recommendations
 - `vw_30day_trend` - View for 30-day trend analysis
@@ -248,6 +267,7 @@ AU-testing/data/asx200_historical.db
 ### Automatic Saving
 
 Results are automatically saved when you run:
+
 ```bash
 ./run_full_backtest.sh --test
 ```
@@ -272,17 +292,20 @@ Then open your browser to: **http://localhost:5000**
 ### Dashboard Features
 
 #### Overview Tab
+
 - **Latest Recommendation**: Use v1 or v2? (with confidence level)
 - **30-Day Summary**: How many times v2 won vs v1
 - **Key Metrics**: Side-by-side performance comparison
 
 #### Performance Trends
+
 - Win rate over time (v1 vs v2)
 - Average return trends
 - Sharpe ratio comparison
 - Trade volume trends
 
 #### Historical Results Table
+
 - Sortable table of all backtest runs
 - Filter by date range
 - Export to CSV

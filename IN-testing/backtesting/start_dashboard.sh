@@ -7,7 +7,7 @@ echo "Backtest Results Dashboard"
 echo "========================================="
 
 # Activate virtual environment
-VENV_PATH="../../stockScannerIN"
+VENV_PATH="../../stockScannerVENV"
 if [ -f "$VENV_PATH/bin/activate" ]; then
     echo "Activating virtual environment..."
     source "$VENV_PATH/bin/activate"

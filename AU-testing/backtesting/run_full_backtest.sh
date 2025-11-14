@@ -31,7 +31,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Virtual environment path (relative to project root)
-VENV_PATH="../../stockScannerIN"
+VENV_PATH="../../stockScannerVENV"
 
 # Default parameters
 TEST_MODE=false
